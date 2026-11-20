@@ -205,6 +205,10 @@ services:
       - TRAINING_IMAGE=${TRAINING_IMAGE:-quantmind-oss:latest}
       - TRAINING_DOCKER_NETWORK=${TRAINING_DOCKER_NETWORK:-quantmind_quantmind-net}
       - HOST_PROJECT_PATH=${HOST_PROJECT_PATH:-/opt/quantmind}
+      # data / models 目录的宿主机路径。默认与 HOST_PROJECT_PATH 同源；
+      # 本地开发把大目录挪到 WSL ext4 等位置时单独覆盖此值。
+      - HOST_DATA_PATH=${HOST_DATA_PATH:-}
+      - HOST_MODELS_PATH=${HOST_MODELS_PATH:-}
       - QUANTMIND_API_BASE_URL=${QUANTMIND_API_BASE_URL:-http://quantmind:8000}
 
       # AutoDL 远程训练节点
@@ -329,9 +333,9 @@ services:
       - QM_SIMONLIN_A_DIR=${QM_SIMONLIN_A_DIR:-/data/third_party/simonlin_a_stock}
     volumes:
       # 运行时数据
-      - ./data:/data
+      - ${QM_DATA_HOST_PATH}:/data
       # AI 模型文件 (按需下载)
-      - ./models:/app/models
+      - ${HOST_MODELS_PATH}:/app/models
       # Qlib 历史数据 (按需下载)
       - ./db:/app/db
       # 日志
@@ -424,6 +428,10 @@ services:
       - TRAINING_IMAGE=${TRAINING_IMAGE:-quantmind-oss:latest}
       - TRAINING_DOCKER_NETWORK=${TRAINING_DOCKER_NETWORK:-quantmind_quantmind-net}
       - HOST_PROJECT_PATH=${HOST_PROJECT_PATH:-/opt/quantmind}
+      # data / models 目录的宿主机路径。默认与 HOST_PROJECT_PATH 同源；
+      # 本地开发把大目录挪到 WSL ext4 等位置时单独覆盖此值。
+      - HOST_DATA_PATH=${HOST_DATA_PATH:-}
+      - HOST_MODELS_PATH=${HOST_MODELS_PATH:-}
       - QUANTMIND_API_BASE_URL=${QUANTMIND_API_BASE_URL:-http://quantmind:8000}
 
       # AutoDL 远程训练节点
@@ -520,9 +528,9 @@ services:
       - MIRROR_QUEUE_OUTSIDE_HOURS=${MIRROR_QUEUE_OUTSIDE_HOURS:-true}
     volumes:
       # 运行时数据
-      - ./data:/data
+      - ${QM_DATA_HOST_PATH}:/data
       # AI 模型文件
-      - ./models:/app/models
+      - ${HOST_MODELS_PATH}:/app/models
       # Qlib 历史数据
       - ./db:/app/db
       # 日志
@@ -591,7 +599,7 @@ services:
       - ./config:/app/config
       - ./scripts:/app/scripts
       - ./logs:/app/logs
-      - ./data:/data
+      - ${QM_DATA_HOST_PATH}:/data
       - ./db:/app/db
     command: celery -A backend.services.engine.qlib_app.celery_config:celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     healthcheck:
@@ -751,9 +759,9 @@ services:
       - ./docker/training/fonts:/app/docker/training/fonts:ro
       # RD-Agent 已 pip install 到镜像中，不再需要运行时挂载
       # QuantMind 数据（读写）
-      - ./data:/data
+      - ${QM_DATA_HOST_PATH}:/data
       - ./db:/app/db
-      - ./models:/app/models
+      - ${HOST_MODELS_PATH}:/app/models
       - ./logs:/app/logs
       - ./user_pools_local:/app/user_pools_local
       # 共享文件目录

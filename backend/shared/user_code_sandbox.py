@@ -170,6 +170,9 @@ def host_bind(path: str | Path) -> str:
     if not candidate.is_absolute() or ".." in candidate.parts:
         raise ValueError("Input has no configured host bind mapping")
     host_root = PurePosixPath(os.getenv("HOST_PROJECT_PATH", "/opt/quantmind"))
+    # data 可能与代码不同源：本地开发把大目录挪到 WSL ext4 等位置时，
+    # 只有 /data 换盘，代码仍在 HOST_PROJECT_PATH 下，故单独给覆盖项。
+    host_data_raw = (os.getenv("HOST_DATA_PATH") or "").strip().rstrip("\\/")
     shared_root = os.getenv("HOST_SHARED_DATA_ROOT", "").strip()
     if shared_root:
         for public_root in (
@@ -178,12 +181,13 @@ def host_bind(path: str | Path) -> str:
         ):
             if candidate.is_relative_to(public_root):
                 return str(PurePosixPath(shared_root) / candidate.relative_to("/data"))
-    for container_root, host_subdir in (
-        (PurePosixPath("/app"), ""),
-        (PurePosixPath("/data"), "data"),
-    ):
-        if candidate.is_relative_to(container_root):
-            return str(host_root / host_subdir / candidate.relative_to(container_root))
+    if candidate.is_relative_to(PurePosixPath("/app")):
+        return str(host_root / candidate.relative_to("/app"))
+    if candidate.is_relative_to(PurePosixPath("/data")):
+        rel = candidate.relative_to("/data")
+        if host_data_raw:
+            return host_data_raw + "\\" + str(rel).replace("/", "\\")
+        return str(host_root / "data" / rel)
     raise ValueError("Input has no configured host bind mapping")
 
 

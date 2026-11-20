@@ -147,25 +147,24 @@ def resolve_llm_config() -> LLMConfig | None:
     return LLMConfig(api_key=key, base_url=base, model=model, protocol=protocol, headers=env_extra_headers())
 
 
-async def chat(
+async def _post_chat(
+    cfg: LLMConfig,
     messages: list[dict[str, str]],
     *,
-    max_tokens: int = 500,
-    temperature: float = 0.3,
-    timeout: float = 30,
-    config: LLMConfig | None = None,
-) -> str:
-    """调用 LLM 返回纯文本。messages 为 [{role, content}, ...]。
+    max_tokens: int,
+    temperature: float,
+    timeout: float,
+    extra_body: dict | None = None,
+) -> dict:
+    """一次原始调用，返回服务端 JSON（两种协议统一）。
 
-    config 不传时从环境变量解析；调用方可显式传入（如用户 Profile 中的 Key）。
+    ``extra_body`` 原样 merge 进请求体：``doc_organize`` 用它传
+    ``{"thinking": {"type": "disabled"}}`` 关掉推理模型的思考——受约束的 JSON
+    抽取不需要思考，只会烧预算和延迟。严格网关不认这个字段会返回 400，
+    由调用方捕获后去掉重试。
     """
-    cfg = config or resolve_llm_config()
-    if cfg is None:
-        raise RuntimeError("未配置可用的 LLM API Key（DEEPSEEK_API_KEY / AI_IDE_LLM_API_KEY / OPENAI_API_KEY 均为空或占位符）")
-
     async with httpx.AsyncClient(timeout=timeout) as client:
         if cfg.protocol == "anthropic":
-            # Anthropic messages 格式：system 拆出，其余 role 仅 user/assistant
             sys_msgs = [m["content"] for m in messages if m["role"] == "system"]
             conv = [m for m in messages if m["role"] != "system"]
             payload: dict = {
@@ -175,6 +174,8 @@ async def chat(
             }
             if sys_msgs:
                 payload["system"] = "\n\n".join(sys_msgs)
+            if extra_body:
+                payload.update(extra_body)
             resp = await client.post(
                 f"{cfg.base_url.rstrip('/')}/v1/messages",
                 headers={
@@ -193,6 +194,8 @@ async def chat(
                 "max_tokens": max_tokens,
                 "temperature": temperature,
             }
+            if extra_body:
+                payload.update(extra_body)
             resp = await client.post(
                 openai_chat_url(cfg.base_url),
                 headers={
@@ -204,7 +207,83 @@ async def chat(
             )
 
         resp.raise_for_status()
-        data = resp.json()
-        if cfg.protocol == "anthropic":
-            return "".join(b.get("text", "") for b in data.get("content", []))
-        return data["choices"][0]["message"]["content"]
+        return resp.json()
+
+
+def _text_of(cfg: LLMConfig, data: dict) -> str:
+    if cfg.protocol == "anthropic":
+        return "".join(b.get("text", "") for b in data.get("content", []))
+    return data["choices"][0]["message"]["content"]
+
+
+async def chat(
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int = 500,
+    temperature: float = 0.3,
+    timeout: float = 30,
+    config: LLMConfig | None = None,
+    extra_body: dict | None = None,
+) -> str:
+    """调用 LLM 返回纯文本。messages 为 [{role, content}, ...]。
+
+    config 不传时从环境变量解析；调用方可显式传入（如用户 Profile 中的 Key）。
+    """
+    cfg = config or resolve_llm_config()
+    if cfg is None:
+        raise RuntimeError("未配置可用的 LLM API Key（DEEPSEEK_API_KEY / AI_IDE_LLM_API_KEY / OPENAI_API_KEY 均为空或占位符）")
+
+    data = await _post_chat(
+        cfg,
+        messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        timeout=timeout,
+        extra_body=extra_body,
+    )
+    return _text_of(cfg, data)
+
+
+async def chat_with_meta(
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int = 500,
+    temperature: float = 0.3,
+    timeout: float = 30,
+    config: LLMConfig | None = None,
+    extra_body: dict | None = None,
+) -> tuple[str, dict]:
+    """同 ``chat``，但额外返回终止原因。
+
+    ``doc_organize`` 依赖 ``finish_reason=="length"`` 判定输出被截断（截断的
+    JSON 不能当成功结果用），``has_reasoning`` 用于识别思考型模型的空正文。
+    """
+    cfg = config or resolve_llm_config()
+    if cfg is None:
+        raise RuntimeError("未配置可用的 LLM API Key（DEEPSEEK_API_KEY / AI_IDE_LLM_API_KEY / OPENAI_API_KEY 均为空或占位符）")
+
+    data = await _post_chat(
+        cfg,
+        messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        timeout=timeout,
+        extra_body=extra_body,
+    )
+    if cfg.protocol == "anthropic":
+        blocks = data.get("content", []) or []
+        has_reasoning = any(
+            isinstance(b, dict) and b.get("type") in {"thinking", "redacted_thinking"}
+            for b in blocks
+        )
+        finish = data.get("stop_reason")
+    else:
+        choice = (data.get("choices") or [{}])[0]
+        message = choice.get("message") or {}
+        has_reasoning = bool(message.get("reasoning_content"))
+        finish = choice.get("finish_reason")
+    return _text_of(cfg, data), {
+        "finish_reason": finish,
+        "has_reasoning": has_reasoning,
+        "model": cfg.model,
+    }

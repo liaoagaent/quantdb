@@ -1,0 +1,105 @@
+{
+  "id": "yi_v3",
+  "name": "壹V3",
+  "description": "周线定趋势（收盘站上周线 MA10 且 MA10 较 3 周前抬升）、日线定买点（模型日频预测分排序，每日调仓、持仓 5 只）、持仓 T+5 优先调出、移动止盈线（自持仓最高收盘回撤 8% 卖出）、一字涨停不卖（T-1 一字板/收盘封板，最高优先级，撤销一切卖单）。所有判定只用 T-1 及更早数据，无前视。",
+  "category": "advanced",
+  "difficulty": "advanced",
+  "params": [
+    {
+      "name": "topk",
+      "description": "持仓股票总数（越小越集中）",
+      "default": 5,
+      "min": 2.0,
+      "max": 200.0
+    },
+    {
+      "name": "n_drop",
+      "description": "每日最大调仓数（n_drop）",
+      "default": 1,
+      "min": 0.0,
+      "max": 200.0
+    },
+    {
+      "name": "hold_days",
+      "description": "持仓交易日数（T+5 到期优先调出）",
+      "default": 5,
+      "min": 1.0,
+      "max": 30.0
+    },
+    {
+      "name": "weekly_ma",
+      "description": "周线趋势均线周期（周）",
+      "default": 10,
+      "min": 3.0,
+      "max": 60.0
+    },
+    {
+      "name": "weekly_slope",
+      "description": "周线均线上行确认周数",
+      "default": 3,
+      "min": 1.0,
+      "max": 12.0
+    },
+    {
+      "name": "rebalance_days",
+      "description": "调仓周期（交易日，1=日线买点）",
+      "default": 1,
+      "min": 1.0,
+      "max": 20.0
+    },
+    {
+      "name": "stop_loss",
+      "description": "个股止损（负数，默认关闭；开启后按 T-1 收盘判定、T 日开盘成交）",
+      "default": -0.03,
+      "min": -0.5,
+      "max": -0.01
+    },
+    {
+      "name": "take_profit",
+      "description": "个股止盈（正数，默认关闭；按 T-1 收盘判定）",
+      "default": 0.4,
+      "min": 0.01,
+      "max": 2.0
+    },
+    {
+      "name": "f_total_mv_min",
+      "description": "总市值下限（元）",
+      "default": 300000000.0,
+      "min": 0.0,
+      "max": null
+    },
+    {
+      "name": "f_amount_ma_5_min",
+      "description": "5 日均成交额下限（万元）",
+      "default": 1000,
+      "min": 0.0,
+      "max": null
+    }
+  ],
+  "execution_defaults": {},
+  "live_defaults": {
+    "rebalance_days": 1,
+    "schedule_type": "interval",
+    "trade_weekdays": [],
+    "enabled_sessions": [
+      "PM"
+    ],
+    "sell_time": "14:30",
+    "buy_time": "14:45",
+    "sell_first": true,
+    "order_type": "LIMIT",
+    "max_price_deviation": 0.02,
+    "max_orders_per_cycle": 20
+  },
+  "live_config_tips": [
+    "持仓仅 5 只、单票约 20% 权重：集中是收益来源也是最大风险来源，实盘务必配单票仓位上限。",
+    "移动止盈线（持仓最高收盘回撤 8% 卖出）与一字板不卖是本版新增的两条规则，均按 T-1 收盘判定。",
+    "一字板不卖 = 最高优先级的撤单规则：T-1 一字板/收盘封板的持仓，当日所有卖单（调仓、止损、止盈）一律撤销。",
+    "日线买点依赖模型信号，换模型成绩差异极大；本版回测基准模型为「尾部目标优化 46 因子 LightGBM」。",
+    "平台回测要求区间内有效交易日 ≥30 个。"
+  ],
+  "markets": [
+    "a_share"
+  ],
+  "dir": "A股策略/04_动量与趋势"
+}

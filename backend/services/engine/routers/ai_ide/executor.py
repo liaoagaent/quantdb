@@ -73,6 +73,15 @@ _SMOKE_CACHE: dict[str, dict[str, Any]] = {}
 # 使用共享卷目录，以便 Docker 宿主机能看到并挂载到下级容器
 TMP_ROOT = os.getenv("AI_IDE_TEMP_DIR", "/app/db/ai_ide_tmp")
 HOST_PROJECT_PATH = os.getenv("HOST_PROJECT_PATH", "/home/quantmind")
+# data / models 可能与代码不同源：本地开发把大目录挪到 WSL ext4 等位置时，
+# 只有这两个目录换盘，代码仍在 HOST_PROJECT_PATH 下，故单独给覆盖项（与
+# training/local_docker_orchestrator.py 的 HOST_DATA_PATH 语义一致）。
+HOST_DATA_PATH = (os.getenv("HOST_DATA_PATH") or "").strip() or os.path.join(
+    HOST_PROJECT_PATH, "data"
+)
+HOST_MODELS_PATH = (os.getenv("HOST_MODELS_PATH") or "").strip() or os.path.join(
+    HOST_PROJECT_PATH, "models"
+)
 
 
 def _build_runner_environment(
@@ -1183,12 +1192,12 @@ async def run_process(job_id: str, file_path: str):
                 "mode": "ro",
             },
             # 挂载模型目录，确保通过 model_id 解析到的 pred.pkl 对 AI-IDE 子容器可见
-            os.path.join(HOST_PROJECT_PATH, "models"): {
+            HOST_MODELS_PATH: {
                 "bind": "/app/models",
                 "mode": "ro",
             },
             # 挂载数据根目录，兼容用户模型或本地存储落在 /data 下的场景
-            os.path.join(HOST_PROJECT_PATH, "data"): {
+            HOST_DATA_PATH: {
                 "bind": "/data",
                 "mode": "ro",
             },

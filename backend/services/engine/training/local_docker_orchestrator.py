@@ -130,17 +130,36 @@ _PROTECTED_PREFIXES: tuple[str, ...] = tuple(
 # 宿主机 compose 工作目录
 _raw = (os.getenv("HOST_PROJECT_PATH") or "").strip()
 if _raw and _raw != ".":
-    _HOST_PROJECT_PATH = Path(_raw).resolve()
+    # Windows 宿主路径（D:/... 或 \\wsl$\...）在 Linux 容器内 is_absolute() 返回 False，
+    # resolve() 会把 cwd（/app）拼在前面，得到 /app/D:/... 这种非法 volume source。
+    # 这类值必须原样保留。
+    _is_windows_path = _raw[1:2] == ":" or _raw.startswith("\\\\")
+    _HOST_PROJECT_PATH = Path(_raw) if _is_windows_path else Path(_raw).resolve()
 else:
     # 退化为当前工作目录（容器内通常为 /app）
     _HOST_PROJECT_PATH = Path.cwd().resolve()
+
+# data 目录的宿主机根路径。默认等于 <HOST_PROJECT_PATH>/data；可用 HOST_DATA_PATH 单独覆盖。
+# 适用场景：本地开发把 data 挪到 WSL ext4 等处（如 \\wsl$\Ubuntu-24.04\home\<user>\quantmind-data），
+# 此时代码仍在 HOST_PROJECT_PATH 下，两者不同源。覆盖值按 Windows 路径拼接，
+# 避免 UNC / 盘符路径被 posixpath 打成 /app/\\wsl$\... 这种非法挂载源。
+_HOST_DATA_ROOT_RAW = (os.getenv("HOST_DATA_PATH") or "").strip().rstrip("\\/")
+
+
+def _host_data_join(rel: str) -> str:
+    """把 / 分隔的相对路径拼到 data 宿主机根上，保持 Windows 反斜杠风格。"""
+    rel = rel.strip("/")
+    if _HOST_DATA_ROOT_RAW:
+        return _HOST_DATA_ROOT_RAW + "\\" + rel.replace("/", "\\")
+    return str(_HOST_PROJECT_PATH / "data" / rel)
+
 
 # 数据目录：feature_snapshots 在 /app/db/feature_snapshots（来自 ./db:/app/db 挂载）
 # Docker volume host path 需要宿主机绝对路径
 if Path("/app/db/feature_snapshots").exists():
     _LOCAL_DATA_PATH = str(_HOST_PROJECT_PATH / "db" / "feature_snapshots")
 elif Path("/data/feature_snapshots").exists():
-    _LOCAL_DATA_PATH = str(_HOST_PROJECT_PATH / "data" / "feature_snapshots")
+    _LOCAL_DATA_PATH = _host_data_join("feature_snapshots")
 else:
     _LOCAL_DATA_PATH = str(_HOST_PROJECT_PATH / "db" / "feature_snapshots")
 
@@ -151,10 +170,8 @@ else:
 _qdb_dir = os.getenv("QM_QUANTDB_DATA_DIR", "").strip() or "/data/quantdb"
 _qdb_path = Path(_qdb_dir)
 if _qdb_path.is_relative_to("/data"):
-    # /data/quantdb → <host_project>/data/quantdb
-    _QUANTDB_DATA_HOST_PATH = str(
-        _HOST_PROJECT_PATH / "data" / _qdb_path.relative_to("/data")
-    )
+    # /data/quantdb → <data_root>/quantdb
+    _QUANTDB_DATA_HOST_PATH = _host_data_join(str(_qdb_path.relative_to("/data")))
 elif _qdb_path.is_relative_to("/app"):
     # /app/data/quantdb → <host_project>/data/quantdb
     _QUANTDB_DATA_HOST_PATH = str(
@@ -170,7 +187,7 @@ def _market_host_path(container_dir: str) -> str:
     """把容器内数据目录（/data/quanthk 等）换算为宿主机绝对路径。"""
     p = Path(container_dir)
     if p.is_relative_to("/data"):
-        return str(_HOST_PROJECT_PATH / "data" / p.relative_to("/data"))
+        return _host_data_join(str(p.relative_to("/data")))
     if p.is_relative_to("/app"):
         return str(_HOST_PROJECT_PATH / p.relative_to("/app"))
     if p.is_absolute():
@@ -764,8 +781,9 @@ class LocalDockerOrchestrator(TrainingOrchestrator):
         # 宿主机路径：/opt/quantmind/data/training_jobs/{run_id}（Docker daemon 需要）
         container_work_dir = Path("/data") / "training_jobs" / run_id
 
-        _compose_dir = _HOST_PROJECT_PATH if _HOST_PROJECT_PATH.is_absolute() else Path.cwd()
-        host_output_dir = _compose_dir / "data" / "training_jobs" / run_id
+        # 宿主机路径：<data_root>/training_jobs/{run_id}（Docker daemon 需要绝对路径）。
+        # 注意 data 根与代码未必同源（HOST_DATA_PATH），不能直接用 _HOST_PROJECT_PATH 拼。
+        host_output_dir = _host_data_join(f"training_jobs/{run_id}")
 
         # 强制创建目录（使用容器内路径，确保 API 容器可写入）
         os.makedirs(internal_output_dir, exist_ok=True)

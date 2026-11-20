@@ -57,9 +57,13 @@ ORGANIZE_KINDS = ("free", "paper")
 _KIND_LABELS = {"free": "自由挖掘", "paper": "论文复现"}
 
 #: 单次 LLM 调用的文档块上限（字符）；超出走 map-reduce
-ORGANIZE_CHUNK_CHARS = 12000
+ORGANIZE_CHUNK_CHARS = 200000
 #: 分段采样的块数上限（超长文档均匀采样，保首保尾）
-ORGANIZE_MAX_CHUNKS = 8
+#: 12000 是老一代 32K 上下文模型留下的值。当前主力模型（DeepSeek-V4.1-Flash，
+#: 上下文 1M）下一篇 10 万字符的论文本该一次读完，被切成 10 块再 reduce 会丢
+#: 跨节信息——实测表现是把正文里的 IC / Sharpe 当成「因子」抽出来。
+#: 取 200000 让绝大多数研报与论文落在单块内，真正超长的才走 map-reduce。
+ORGANIZE_MAX_CHUNKS = 4
 #: 用户额外要求限长
 ORGANIZE_EXTRA_MAX_CHARS = 2000
 
@@ -389,7 +393,7 @@ def validate_payload(payload: Any, kind: str) -> dict:
                 norm["metrics"] = metrics
             items.append(norm)
         out["hypotheses"] = items
-    else:
+    elif kind == "paper":
         method = _as_str(payload.get("method"))
         if method:
             out["method"] = method
@@ -457,7 +461,7 @@ def render_markdown(payload: dict, *, prompt_version: str = PROMPT_VERSION) -> s
                 lines += ["", "数据提示："] + [f"- {h}" for h in item["data_hints"]]
             if item.get("metrics"):
                 lines += ["", "评估指标："] + [f"- {m}" for m in item["metrics"]]
-    else:
+    elif kind == "paper":
         if payload.get("method"):
             lines += ["", "## 方法概述", "", payload["method"]]
         lines += ["", "## 复现因子"]
@@ -488,7 +492,9 @@ def render_markdown(payload: dict, *, prompt_version: str = PROMPT_VERSION) -> s
 
 
 def _system_prompt(kind: str) -> str:
-    return SYSTEM_PROMPT_FREE if kind == "free" else SYSTEM_PROMPT_PAPER
+    if kind == "paper":
+        return SYSTEM_PROMPT_PAPER
+    return SYSTEM_PROMPT_FREE
 
 
 def _extra_block(extra: str) -> str:

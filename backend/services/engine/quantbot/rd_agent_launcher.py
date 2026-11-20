@@ -308,8 +308,11 @@ class RDAgentLauncher:
         }
 
         host = self.HOST_PROJECT_PATH.rstrip("/")
+        # data 可能与代码不同源：本地开发把大目录挪到 WSL ext4 等位置时单独覆盖
+        host_data = (os.getenv("HOST_DATA_PATH") or "").strip().rstrip("\\/") or f"{host}/data"
+        sep = "\\" if "\\" in host_data else "/"
         # 共享日志目录：rdagent 容器写入，quantmind 容器读取
-        log_dir_host = f"{host}/data/rdagent_logs"
+        log_dir_host = f"{host_data}{sep}rdagent_logs"
         log_dir_container = "/tmp/rdagent_logs"
         volumes = {
             f"{host}/backend": {"bind": "/app/backend", "mode": "ro"},
