@@ -31,7 +31,10 @@ logger = logging.getLogger("news.enricher")
 
 # 全量目标版本（与 enrich_article 写入的 model_version 同源，避免两处不同步引发无限重跑）
 def _current_target_version() -> str:
-    return MODEL_VERSION + ("+finbert" if sentiment_mod.is_available() else "")
+    # 用配置级开关（is_finbert_enabled）而非运行时加载态（is_available）：
+    # celery-worker 进程模型是懒加载的，若按 is_available 判定，其 target 会退化成
+    # 无 finbert 后缀，增量批次会把 api 进程写好的 FinBERT 结果降级回词典版（实测发生）
+    return MODEL_VERSION + ("+finbert" if sentiment_mod.is_finbert_enabled() else "")
 
 HUNTLY_BASE_URL = os.getenv("HUNTLY_BASE_URL", "http://quantmind-huntly").rstrip("/")
 HUNTLY_USERNAME = os.getenv("HUNTLY_USERNAME", "")
@@ -633,7 +636,7 @@ def run_full_rebuild(force: bool = False) -> int:
                 # 快照失败（如磁盘紧张）降级为直读线上库，行为等同旧版
                 logger.warning("Huntly 快照失败，降级直读: %s", e)
             target_version = MODEL_VERSION + (
-                "+finbert" if sentiment_mod.is_available() else ""
+                "+finbert" if sentiment_mod.is_finbert_enabled() else ""
             )
             for row in _iter_all_huntly_pages(batch_size=2000, db_path=scan_db):
                 pid = row["id"]

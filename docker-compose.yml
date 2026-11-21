@@ -334,6 +334,9 @@ services:
     volumes:
       # 运行时数据
       - ${QM_DATA_HOST_PATH}:/data
+      # Huntly 资讯库直通：huntly 容器挂的是 ./data/huntly（仓库目录），而数据根 QM_DATA_HOST_PATH
+      # 指向 WSL；后端 news 模块直读 /data/huntly/db.sqlite，必须把 live 库挂进来，否则列表恒为空
+      - ./data/huntly:/data/huntly
       # AI 模型文件 (按需下载)
       - ${HOST_MODELS_PATH}:/app/models
       # Qlib 历史数据 (按需下载)
