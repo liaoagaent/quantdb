@@ -410,6 +410,27 @@ named volumes：postgres-data、redis-data、qwenpaw-*。
 7. 在测试机走一遍 deploy/update.sh → 部署与运维
 8. 遇到问题：先查 §11 踩坑记录，再查 docs/通达信数据同步_目录约定与踩坑.md
 
+## 13. Git 仓库与上游同步
+
+本仓库是开源项目 QuantMind 的个人 fork，remote 布局：
+
+| remote | 地址 | 用途 |
+|---|---|---|
+| `origin` | `https://github.com/liaoagaent/quantdb` | 自己的仓库（推送目标） |
+| `upstream` | `https://github.com/qusong0627/QuantMind` | 原项目（上游） |
+
+个人开发分支：`my-dev`（基于 master 创建）。
+
+**同步上游更新（每次想跟进原项目时执行）**：
+
+```bash
+git fetch upstream master        # 拉取上游最新提交
+git merge upstream/master        # 合并进当前分支（冲突需手动解决）
+git push origin my-dev           # 推回自己的仓库
+```
+
+注意：合并前先 `git status` 确认无未提交改动；若偏好线性历史，可改用 `git rebase upstream/master` 后 `git push --force-with-lease origin my-dev`。
+
 ---
 
 *本文基于 2026-11 实战整理：通达信分钟线新格式破解与流式重写、日K/分K/5分K 三日全量入湖验收（min1 135.5 万行/日、min5 27.1 万行/日、日线 5,639 只/日，000001.SZ 日线=分钟线互证）、CJBS FirstGPType 根因修复、l2_snapshot_collector 200 只/批重写，以及 sync/deploy/ml 四路代码调研。*

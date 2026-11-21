@@ -23,11 +23,21 @@ QuantMind 是一个量化交易平台，后端为 Python（FastAPI），前端�
 
 ### 后端
 ```bash
-# 启动全部服务（Docker）
+# 1) 先启动 Docker Desktop（本机安装在 D:\VM\Docker，WSL2 后端），等 `docker version` 出现 server 段
+# 2) 一键拉起全栈：db/redis/quantmind(单容器内含 api:8000/engine:8001/trade:8002/stream:8003)/
+#    celery-worker/celery-beat/data-gateway/huntly/rsshub/qwenpaw
+#    （quantmind-oss 镜像已在本地；仅依赖变化时才需 build，且在服务器上做）
 docker compose up -d
 
-# 本地运行单个服务
-SERVICE_MODE=api python backend/main_oss.py
+# 3) 健康验证（四服务端口 8000-8003）
+docker compose ps
+curl http://127.0.0.1:8000/health   # {"status":"healthy","service":"quantmind-api"}
+
+# 改后端代码后重启容器（backend 为 bind mount，免 rebuild）
+docker compose restart quantmind
+
+# 注意：后端统一走 docker compose 启动。.env 的 DB_HOST=db、REDIS_HOST=redis 是容器网络名，
+# 本地 python 直跑后端连不上库——不要用本地 python 直启后端。
 
 # 测试（在项目根目录执行）
 python backend/run_tests.py unit        # 单元测试
@@ -48,6 +58,8 @@ npm run dev:web          # 开发模式（Web 浏览器）
 npm run typecheck        # 类型检查
 npm run dashboard:build  # 生产环境构建
 ```
+
+> 本机注意：`npm run dev` 里 Electron 若秒退（无输出、exit 3 / 0x80000003，本机 GPU/沙箱环境导致），Vite(3000) 仍会正常起；此时单独补起桌面端：`cd electron && VITE_DEV=1 npx electron . --no-sandbox --disable-gpu`。启动日志中的 GPU disk cache「拒绝访问」报错无害。
 
 ## 架构要点
 
